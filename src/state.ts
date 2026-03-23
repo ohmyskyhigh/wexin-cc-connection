@@ -133,23 +133,70 @@ function sessionPath(userId: string): string {
   return path.join(sessionsDir(), `${safe}.json`);
 }
 
-export function loadUserSession(userId: string): string | undefined {
+type UserSessionData = {
+  sessionId?: string;
+  addDirs?: string[];
+  updatedAt?: string;
+};
+
+function loadSessionData(userId: string): UserSessionData {
   try {
     const raw = fs.readFileSync(sessionPath(userId), "utf-8");
-    const data = JSON.parse(raw) as { sessionId?: string };
-    return typeof data.sessionId === "string" ? data.sessionId : undefined;
+    return JSON.parse(raw) as UserSessionData;
   } catch {
-    return undefined;
+    return {};
   }
 }
 
-export function saveUserSession(userId: string, sessionId: string): void {
+function saveSessionData(userId: string, data: UserSessionData): void {
   ensureDir(sessionsDir());
-  fs.writeFileSync(sessionPath(userId), JSON.stringify({ sessionId, updatedAt: new Date().toISOString() }), "utf-8");
+  fs.writeFileSync(sessionPath(userId), JSON.stringify({ ...data, updatedAt: new Date().toISOString() }), "utf-8");
+}
+
+export function loadUserSession(userId: string): string | undefined {
+  const data = loadSessionData(userId);
+  return typeof data.sessionId === "string" ? data.sessionId : undefined;
+}
+
+export function saveUserSession(userId: string, sessionId: string): void {
+  const data = loadSessionData(userId);
+  saveSessionData(userId, { ...data, sessionId });
 }
 
 export function clearUserSession(userId: string): void {
-  try { fs.unlinkSync(sessionPath(userId)); } catch { /* ok */ }
+  const data = loadSessionData(userId);
+  // Keep addDirs, only clear session
+  if (data.addDirs?.length) {
+    saveSessionData(userId, { addDirs: data.addDirs });
+  } else {
+    try { fs.unlinkSync(sessionPath(userId)); } catch { /* ok */ }
+  }
+}
+
+export function loadUserAddDirs(userId: string): string[] {
+  return loadSessionData(userId).addDirs ?? [];
+}
+
+export function addUserDir(userId: string, dir: string): string[] {
+  const data = loadSessionData(userId);
+  const dirs = data.addDirs ?? [];
+  if (!dirs.includes(dir)) {
+    dirs.push(dir);
+  }
+  saveSessionData(userId, { ...data, addDirs: dirs });
+  return dirs;
+}
+
+export function removeUserDir(userId: string, dir: string): string[] {
+  const data = loadSessionData(userId);
+  const dirs = (data.addDirs ?? []).filter((d) => d !== dir);
+  saveSessionData(userId, { ...data, addDirs: dirs });
+  return dirs;
+}
+
+export function clearUserDirs(userId: string): void {
+  const data = loadSessionData(userId);
+  saveSessionData(userId, { ...data, addDirs: [] });
 }
 
 export function clearAllSessions(): void {

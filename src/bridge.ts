@@ -3,7 +3,7 @@ import { sendMessageWeixin, markdownToPlainText } from "./ilink/send.js";
 import { MessageItemType, TypingStatus } from "./ilink/types.js";
 import type { WeixinMessage, MessageItem } from "./ilink/types.js";
 import { runClaude, resetSession } from "./claude-runner.js";
-import { loadSyncCursor, saveSyncCursor } from "./state.js";
+import { loadSyncCursor, saveSyncCursor, addUserDir, removeUserDir, loadUserAddDirs, clearUserDirs } from "./state.js";
 import { logger } from "./logger.js";
 
 const DEFAULT_LONG_POLL_TIMEOUT_MS = 35_000;
@@ -114,15 +114,68 @@ async function processOneMessage(
 
   logger.info(`Inbound: from=${fromUser} text="${text.slice(0, 60)}${text.length > 60 ? "..." : ""}"`);
 
-  // Handle /clear command — reset Claude session for this user
-  if (text.trim() === "/clear") {
-    resetSession(fromUser);
-    await sendMessageWeixin({
-      to: fromUser,
-      text: "✅ 会话已重置，下一条消息将开始新对话。",
-      opts: { baseUrl: opts.baseUrl, token: opts.token, contextToken },
-    });
-    return;
+  // Handle slash commands
+  const trimmed = text.trim();
+  if (trimmed.startsWith("/")) {
+    const sendReply = (msg: string) =>
+      sendMessageWeixin({ to: fromUser, text: msg, opts: { baseUrl: opts.baseUrl, token: opts.token, contextToken } });
+
+    if (trimmed === "/clear") {
+      resetSession(fromUser);
+      await sendReply("✅ 会话已重置，下一条消息将开始新对话。");
+      return;
+    }
+
+    if (trimmed.startsWith("/add-dir ")) {
+      const dir = trimmed.slice("/add-dir ".length).trim();
+      if (!dir) {
+        await sendReply("用法: /add-dir <路径>\n例: /add-dir /Users/me/project");
+        return;
+      }
+      const dirs = addUserDir(fromUser, dir);
+      await sendReply(`✅ 已添加目录: ${dir}\n当前目录列表:\n${dirs.map((d) => `  • ${d}`).join("\n")}`);
+      return;
+    }
+
+    if (trimmed.startsWith("/rm-dir ")) {
+      const dir = trimmed.slice("/rm-dir ".length).trim();
+      if (!dir) {
+        await sendReply("用法: /rm-dir <路径>");
+        return;
+      }
+      const dirs = removeUserDir(fromUser, dir);
+      await sendReply(dirs.length
+        ? `✅ 已移除目录: ${dir}\n当前目录列表:\n${dirs.map((d) => `  • ${d}`).join("\n")}`
+        : `✅ 已移除目录: ${dir}\n当前无额外目录。`);
+      return;
+    }
+
+    if (trimmed === "/dirs") {
+      const dirs = loadUserAddDirs(fromUser);
+      await sendReply(dirs.length
+        ? `当前目录列表:\n${dirs.map((d) => `  • ${d}`).join("\n")}`
+        : "当前无额外目录。用 /add-dir <路径> 添加。");
+      return;
+    }
+
+    if (trimmed === "/clear-dirs") {
+      clearUserDirs(fromUser);
+      await sendReply("✅ 已清除所有额外目录。");
+      return;
+    }
+
+    if (trimmed === "/help") {
+      await sendReply(
+        "可用命令:\n" +
+        "  /clear       — 重置会话\n" +
+        "  /add-dir <路径> — 添加 Claude 可访问的目录\n" +
+        "  /rm-dir <路径>  — 移除目录\n" +
+        "  /dirs        — 查看当前目录列表\n" +
+        "  /clear-dirs  — 清除所有额外目录\n" +
+        "  /help        — 显示本帮助"
+      );
+      return;
+    }
   }
 
   // Send typing indicator

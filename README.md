@@ -50,10 +50,16 @@ npm run login
 ### 第二步：启动桥接
 
 ```bash
-npm start
-
-# 或者使用 YOLO 模式（跳过所有 Claude 权限确认）：
+# 推荐：使用 YOLO 模式启动
 npm run start:yolo
+```
+
+> **为什么推荐 YOLO 模式？** Claude Code 在执行操作时会频繁请求权限确认（读取文件、运行命令等）。由于桥接程序以非交互模式（`claude -p`）运行，无法在微信端进行权限确认，不使用 YOLO 模式会导致 Claude 无法正常执行大部分操作。`--yolo` 等同于 Claude Code 的 `--dangerously-skip-permissions`，跳过所有权限提示。
+
+如果你不需要跳过权限（例如仅用于简单问答），也可以使用普通模式：
+
+```bash
+npm start
 ```
 
 桥接程序启动后会通过长轮询持续监听微信消息。收到消息后：
@@ -69,6 +75,11 @@ npm run start:yolo
 | 命令 | 说明 |
 |------|------|
 | `/clear` | 重置 Claude 会话，下一条消息开启全新对话 |
+| `/add-dir <路径>` | 添加 Claude 可访问的目录 |
+| `/rm-dir <路径>` | 移除已添加的目录 |
+| `/dirs` | 查看当前目录列表 |
+| `/clear-dirs` | 清除所有额外目录 |
+| `/help` | 显示所有可用命令 |
 
 ## 环境变量
 

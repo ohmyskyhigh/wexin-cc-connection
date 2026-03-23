@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { logger } from "./logger.js";
-import { loadUserSession, saveUserSession, clearUserSession } from "./state.js";
+import { loadUserSession, saveUserSession, clearUserSession, loadUserAddDirs } from "./state.js";
 
 function execFileAsync(
   cmd: string,
@@ -57,6 +57,11 @@ export async function runClaude(
 
   if (opts?.model) {
     args.push("--model", opts.model);
+  }
+
+  const addDirs = loadUserAddDirs(fromUserId);
+  for (const dir of addDirs) {
+    args.push("--add-dir", dir);
   }
 
   const mode = existingSession ? `resume=${existingSession.slice(0, 8)}...` : "new";
