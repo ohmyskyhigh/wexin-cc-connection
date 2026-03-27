@@ -1,24 +1,29 @@
 {
-  "name": "weixin-cc-connection",
+  "name": "wexin-code-cli-bridge",
   "version": "0.1.0",
-  "description": "Bridge WeChat messages to Claude Code CLI via iLink protocol",
+  "description": "Bridge WeChat messages to code CLIs (Claude Code, Codex, Gemini CLI) via iLink protocol",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
+  "bin": {
+    "wcc": "./dist/cli.js"
+  },
   "scripts": {
-    "login": "tsx src/index.ts login",
-    "start": "tsx src/index.ts start",
-    "start:yolo": "tsx src/index.ts start --yolo",
+    "build": "tsc",
+    "login": "tsx src/cli.ts login",
+    "start": "tsx src/cli.ts start",
+    "start:yolo": "tsx src/cli.ts start --yolo",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "commander": "^14.0.3",
     "qrcode-terminal": "0.12.0"
   },
   "devDependencies": {
-    "tsx": "^4.19.0",
-    "typescript": "^5.8.0",
     "@types/node": "^22.0.0",
-    "@types/qrcode-terminal": "^0.12.2"
+    "@types/qrcode-terminal": "^0.12.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
   }
 }

@@ -121,7 +121,7 @@ export function saveSyncCursor(accountId: string, cursor: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Claude session storage (per WeChat user)
+// CLI session storage (per WeChat user)
 // ---------------------------------------------------------------------------
 
 function sessionsDir(): string {

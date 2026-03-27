@@ -32,8 +32,8 @@
 ## 安装
 
 ```bash
-git clone https://github.com/ohmyskyhigh/wexin-cc-connection.git
-cd wexin-cc-connection
+git clone https://github.com/ohmyskyhigh/wexin-code-cli-bridge.git
+cd wexin-code-cli-bridge
 npm install
 ```
 

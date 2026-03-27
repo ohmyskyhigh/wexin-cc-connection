@@ -1,0 +1,187 @@
+import { execFileAsync } from "./exec.js";
+import { logger } from "../logger.js";
+import { loadUserSession, saveUserSession, clearUserSession, loadUserAddDirs } from "../state.js";
+import type { BackendRunner, BackendResponse, BackendRunOpts } from "./types.js";
+
+export function buildCodexArgs(
+  message: string,
+  opts?: BackendRunOpts,
+  sessionId?: string,
+  addDirs?: string[],
+): string[] {
+  const args: string[] = [];
+
+  if (opts?.autoApprove) {
+    args.push("--full-auto");
+  }
+  if (opts?.model) {
+    args.push("-m", opts.model);
+  }
+  if (addDirs) {
+    for (const dir of addDirs) {
+      args.push("--add-dir", dir);
+    }
+  }
+
+  // Codex uses subcommand style: codex exec [--json] "message"
+  // or: codex exec resume <sessionId> [--json] "message"
+  if (sessionId) {
+    args.push("exec", "resume", sessionId, "--json", message);
+  } else {
+    args.push("exec", "--json", message);
+  }
+
+  return args;
+}
+
+interface CodexEvent {
+  type?: string;
+  session_id?: string;
+  // turn.completed events
+  message?: {
+    content?: string;
+    role?: string;
+  };
+  // item events
+  item?: {
+    type?: string;
+    content?: Array<{ text?: string; type?: string }>;
+  };
+  // Generic text fallback
+  text?: string;
+  output?: string;
+  error?: string;
+}
+
+export function parseCodexOutput(stdout: string): {
+  result: string;
+  sessionId: string;
+  costUsd: number;
+  isError: boolean;
+} {
+  const lines = stdout.trim().split("\n");
+  let result = "";
+  let sessionId = "";
+  let isError = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    let event: CodexEvent;
+    try {
+      event = JSON.parse(trimmed) as CodexEvent;
+    } catch {
+      continue;
+    }
+
+    // Extract session ID from any event that has one
+    if (event.session_id) {
+      sessionId = event.session_id;
+    }
+
+    // Extract result from turn.completed or similar completion events
+    if (event.type === "turn.completed" || event.type === "message.completed") {
+      if (event.message?.content) {
+        result = event.message.content;
+      }
+    }
+
+    // Fallback: item events with content array
+    if (event.type === "item.created" || event.type === "item.completed") {
+      if (event.item?.content) {
+        for (const part of event.item.content) {
+          if (part.type === "text" && part.text) {
+            result = part.text;
+          }
+        }
+      }
+    }
+
+    // Detect errors
+    if (event.error) {
+      isError = true;
+    }
+
+    // Generic fallbacks
+    if (!result && event.output) {
+      result = event.output;
+    }
+    if (!result && event.text) {
+      result = event.text;
+    }
+  }
+
+  // If no JSONL events parsed, try parsing entire stdout as single JSON
+  if (!result && lines.length > 0) {
+    try {
+      const single = JSON.parse(stdout) as { result?: string; output?: string; error?: string; session_id?: string };
+      result = single.result ?? single.output ?? "";
+      if (single.session_id) sessionId = single.session_id;
+      if (single.error) isError = true;
+    } catch {
+      // stdout might be plain text
+      result = stdout.trim();
+    }
+  }
+
+  return { result, sessionId, costUsd: 0, isError };
+}
+
+export function createCodexRunner(): BackendRunner {
+  return {
+    name: "codex",
+
+    async run(message, fromUserId, opts) {
+      const existingSession = loadUserSession(fromUserId);
+      const addDirs = loadUserAddDirs(fromUserId);
+      const args = buildCodexArgs(message, opts, existingSession, addDirs);
+
+      const mode = existingSession ? `resume=${existingSession.slice(0, 8)}...` : "new";
+      logger.info(`codex: invoking for user=${fromUserId.slice(0, 12)}... (${mode})`);
+      const startMs = Date.now();
+
+      try {
+        const { stdout } = await execFileAsync("codex", args, {
+          timeout: opts?.timeoutMs ?? 5 * 60_000,
+        });
+
+        const elapsed = Date.now() - startMs;
+        logger.info(`codex: completed in ${elapsed}ms`);
+
+        const parsed = parseCodexOutput(stdout);
+
+        const sessionId = parsed.sessionId || existingSession || "";
+        if (sessionId) {
+          saveUserSession(fromUserId, sessionId);
+        }
+
+        if (parsed.isError) {
+          logger.error(`codex: returned error: ${parsed.result || "unknown"}`);
+        }
+
+        return {
+          result: parsed.isError ? (parsed.result || "Sorry, an error occurred.") : parsed.result,
+          sessionId,
+          durationMs: elapsed,
+          costUsd: parsed.costUsd,
+        };
+      } catch (err) {
+        const elapsed = Date.now() - startMs;
+        logger.error(`codex: failed after ${elapsed}ms err=${String(err)}`);
+
+        if (existingSession && String(err).includes("Session")) {
+          logger.warn(`codex: clearing stale session, will retry as new`);
+          clearUserSession(fromUserId);
+        }
+
+        throw err;
+      }
+    },
+
+    resetSession(fromUserId) {
+      clearUserSession(fromUserId);
+      logger.info(`codex: session cleared for user=${fromUserId.slice(0, 12)}...`);
+    },
+  };
+}

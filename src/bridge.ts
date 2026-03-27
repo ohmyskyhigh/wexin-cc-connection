@@ -2,7 +2,7 @@ import { getUpdates, sendTyping, getConfig } from "./ilink/api.js";
 import { sendMessageWeixin, markdownToPlainText } from "./ilink/send.js";
 import { MessageItemType, TypingStatus } from "./ilink/types.js";
 import type { WeixinMessage, MessageItem } from "./ilink/types.js";
-import { runClaude, resetSession } from "./claude-runner.js";
+import type { BackendRunner } from "./backend/index.js";
 import { loadSyncCursor, saveSyncCursor, addUserDir, removeUserDir, loadUserAddDirs, clearUserDirs } from "./state.js";
 import { logger } from "./logger.js";
 
@@ -21,7 +21,8 @@ export type BridgeOpts = {
   accountId: string;
   abortSignal?: AbortSignal;
   model?: string;
-  dangerouslySkipPermissions?: boolean;
+  autoApprove?: boolean;
+  backend: BackendRunner;
 };
 
 // ---------------------------------------------------------------------------
@@ -121,7 +122,7 @@ async function processOneMessage(
       sendMessageWeixin({ to: fromUser, text: msg, opts: { baseUrl: opts.baseUrl, token: opts.token, contextToken } });
 
     if (trimmed === "/clear") {
-      resetSession(fromUser);
+      opts.backend.resetSession(fromUser);
       await sendReply("✅ 会话已重置，下一条消息将开始新对话。");
       return;
     }
@@ -168,7 +169,7 @@ async function processOneMessage(
       await sendReply(
         "可用命令:\n" +
         "  /clear       — 重置会话\n" +
-        "  /add-dir <路径> — 添加 Claude 可访问的目录\n" +
+        "  /add-dir <路径> — 添加可访问的目录\n" +
         "  /rm-dir <路径>  — 移除目录\n" +
         "  /dirs        — 查看当前目录列表\n" +
         "  /clear-dirs  — 清除所有额外目录\n" +
@@ -188,15 +189,15 @@ async function processOneMessage(
     });
   }
 
-  // Invoke Claude Code
+  // Invoke CLI backend
   let response: string;
   try {
-    const result = await runClaude(text, fromUser, { model: opts.model, dangerouslySkipPermissions: opts.dangerouslySkipPermissions });
+    const result = await opts.backend.run(text, fromUser, { model: opts.model, autoApprove: opts.autoApprove });
     response = markdownToPlainText(result.result);
-    logger.info(`Claude response: ${result.durationMs}ms, cost=$${result.costUsd.toFixed(4)}, len=${response.length}`);
-    logger.info(`Claude reply:\n${response}`);
+    logger.info(`${opts.backend.name} response: ${result.durationMs}ms, cost=$${result.costUsd.toFixed(4)}, len=${response.length}`);
+    logger.info(`${opts.backend.name} reply:\n${response}`);
   } catch (err) {
-    logger.error(`Claude invocation failed: ${String(err)}`);
+    logger.error(`${opts.backend.name} invocation failed: ${String(err)}`);
     response = "⚠️ 处理消息时出错，请稍后重试。";
   }
 
