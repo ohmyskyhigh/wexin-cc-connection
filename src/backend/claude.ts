@@ -56,7 +56,7 @@ export function createClaudeRunner(): BackendRunner {
     name: "claude",
 
     async run(message, fromUserId, opts) {
-      const existingSession = loadUserSession(fromUserId);
+      const existingSession = loadUserSession(fromUserId, "claude");
       const addDirs = loadUserAddDirs(fromUserId);
       const args = buildClaudeArgs(message, opts, existingSession, addDirs);
 
@@ -76,7 +76,7 @@ export function createClaudeRunner(): BackendRunner {
 
         const sessionId = parsed.sessionId || existingSession || "";
         if (sessionId) {
-          saveUserSession(fromUserId, sessionId);
+          saveUserSession(fromUserId, sessionId, "claude");
         }
 
         if (parsed.isError) {
@@ -95,7 +95,7 @@ export function createClaudeRunner(): BackendRunner {
 
         if (existingSession && String(err).includes("Session")) {
           logger.warn(`claude: clearing stale session, will retry as new`);
-          clearUserSession(fromUserId);
+          clearUserSession(fromUserId, "claude");
         }
 
         throw err;
@@ -103,7 +103,7 @@ export function createClaudeRunner(): BackendRunner {
     },
 
     resetSession(fromUserId) {
-      clearUserSession(fromUserId);
+      clearUserSession(fromUserId, "claude");
       logger.info(`claude: session cleared for user=${fromUserId.slice(0, 12)}...`);
     },
   };

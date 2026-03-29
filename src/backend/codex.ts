@@ -37,6 +37,7 @@ export function buildCodexArgs(
 interface CodexEvent {
   type?: string;
   session_id?: string;
+  thread_id?: string;
   // turn.completed events
   message?: {
     content?: string;
@@ -45,6 +46,7 @@ interface CodexEvent {
   // item events
   item?: {
     type?: string;
+    text?: string;
     content?: Array<{ text?: string; type?: string }>;
   };
   // Generic text fallback
@@ -75,26 +77,31 @@ export function parseCodexOutput(stdout: string): {
       continue;
     }
 
-    // Extract session ID from any event that has one
+    // Extract session/thread ID from any event that has one
     if (event.session_id) {
       sessionId = event.session_id;
     }
-
-    // Extract result from turn.completed or similar completion events
-    if (event.type === "turn.completed" || event.type === "message.completed") {
-      if (event.message?.content) {
-        result = event.message.content;
-      }
+    if (event.thread_id) {
+      sessionId = event.thread_id;
     }
 
-    // Fallback: item events with content array
+    // Extract result from item events (item.text is the actual response)
     if (event.type === "item.created" || event.type === "item.completed") {
-      if (event.item?.content) {
+      if (event.item?.text) {
+        result = event.item.text;
+      } else if (event.item?.content) {
         for (const part of event.item.content) {
           if (part.type === "text" && part.text) {
             result = part.text;
           }
         }
+      }
+    }
+
+    // Extract result from turn/message completion events
+    if (event.type === "turn.completed" || event.type === "message.completed") {
+      if (event.message?.content) {
+        result = event.message.content;
       }
     }
 
@@ -133,7 +140,7 @@ export function createCodexRunner(): BackendRunner {
     name: "codex",
 
     async run(message, fromUserId, opts) {
-      const existingSession = loadUserSession(fromUserId);
+      const existingSession = loadUserSession(fromUserId, "codex");
       const addDirs = loadUserAddDirs(fromUserId);
       const args = buildCodexArgs(message, opts, existingSession, addDirs);
 
@@ -153,7 +160,7 @@ export function createCodexRunner(): BackendRunner {
 
         const sessionId = parsed.sessionId || existingSession || "";
         if (sessionId) {
-          saveUserSession(fromUserId, sessionId);
+          saveUserSession(fromUserId, sessionId, "codex");
         }
 
         if (parsed.isError) {
@@ -172,7 +179,7 @@ export function createCodexRunner(): BackendRunner {
 
         if (existingSession && String(err).includes("Session")) {
           logger.warn(`codex: clearing stale session, will retry as new`);
-          clearUserSession(fromUserId);
+          clearUserSession(fromUserId, "codex");
         }
 
         throw err;
@@ -180,7 +187,7 @@ export function createCodexRunner(): BackendRunner {
     },
 
     resetSession(fromUserId) {
-      clearUserSession(fromUserId);
+      clearUserSession(fromUserId, "codex");
       logger.info(`codex: session cleared for user=${fromUserId.slice(0, 12)}...`);
     },
   };

@@ -23,6 +23,7 @@ export type BridgeOpts = {
   model?: string;
   autoApprove?: boolean;
   backend: BackendRunner;
+  onSessionExpired?: () => Promise<{ token: string; accountId: string; baseUrl: string } | null>;
 };
 
 // ---------------------------------------------------------------------------
@@ -240,7 +241,8 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 export async function startBridge(opts: BridgeOpts): Promise<void> {
-  const { baseUrl, token, accountId, abortSignal } = opts;
+  let { baseUrl, token, accountId } = opts;
+  const { abortSignal } = opts;
 
   logger.info(`Bridge started: baseUrl=${baseUrl} account=${accountId}`);
 
@@ -278,8 +280,19 @@ export async function startBridge(opts: BridgeOpts): Promise<void> {
           resp.errcode === SESSION_EXPIRED_ERRCODE || resp.ret === SESSION_EXPIRED_ERRCODE;
 
         if (isSessionExpired) {
-          logger.error("Session expired! Please re-login: npm run login");
-          // Pause for 5 minutes before retrying
+          if (opts.onSessionExpired) {
+            logger.info("Session expired, re-logging in...");
+            const newCreds = await opts.onSessionExpired();
+            if (newCreds) {
+              token = newCreds.token;
+              accountId = newCreds.accountId;
+              baseUrl = newCreds.baseUrl;
+              cursor = "";
+              logger.info(`Re-login successful, new account=${accountId}`);
+              continue;
+            }
+          }
+          logger.error("Session expired! Please re-login: wcc login");
           await sleep(5 * 60_000, abortSignal);
           continue;
         }

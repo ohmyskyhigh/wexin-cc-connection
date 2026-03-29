@@ -189,16 +189,17 @@ describe("Codex arg building", () => {
 // ---------------------------------------------------------------------------
 
 describe("Codex output parsing", () => {
-  it("parses JSONL with turn.completed event", () => {
+  it("parses real Codex JSONL output", () => {
     const lines = [
-      JSON.stringify({ type: "thread.started", session_id: "codex-sess-1" }),
+      JSON.stringify({ type: "thread.started", thread_id: "019d38f7-d08e-7450-a26b-b408c24a423e" }),
       JSON.stringify({ type: "turn.started" }),
-      JSON.stringify({ type: "turn.completed", message: { content: "Done!", role: "assistant" } }),
+      JSON.stringify({ type: "item.completed", item: { id: "item0", type: "agentmessage", text: "Hello from Codex!" } }),
+      JSON.stringify({ type: "turn.completed", usage: { inputtokens: 100, outputtokens: 50 } }),
     ].join("\n");
 
     const parsed = parseCodexOutput(lines);
-    assert.strictEqual(parsed.result, "Done!");
-    assert.strictEqual(parsed.sessionId, "codex-sess-1");
+    assert.strictEqual(parsed.result, "Hello from Codex!");
+    assert.strictEqual(parsed.sessionId, "019d38f7-d08e-7450-a26b-b408c24a423e");
   });
 
   it("parses item.completed with content array", () => {

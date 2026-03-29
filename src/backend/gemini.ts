@@ -55,7 +55,7 @@ export function createGeminiRunner(): BackendRunner {
     name: "gemini",
 
     async run(message, fromUserId, opts) {
-      const existingSession = loadUserSession(fromUserId);
+      const existingSession = loadUserSession(fromUserId, "gemini");
       const addDirs = loadUserAddDirs(fromUserId);
       const args = buildGeminiArgs(message, opts, existingSession, addDirs);
 
@@ -75,7 +75,7 @@ export function createGeminiRunner(): BackendRunner {
 
         const sessionId = parsed.sessionId || existingSession || "";
         if (sessionId) {
-          saveUserSession(fromUserId, sessionId);
+          saveUserSession(fromUserId, sessionId, "gemini");
         }
 
         if (parsed.isError) {
@@ -94,7 +94,7 @@ export function createGeminiRunner(): BackendRunner {
 
         if (existingSession && String(err).includes("Session")) {
           logger.warn(`gemini: clearing stale session, will retry as new`);
-          clearUserSession(fromUserId);
+          clearUserSession(fromUserId, "gemini");
         }
 
         throw err;
@@ -102,7 +102,7 @@ export function createGeminiRunner(): BackendRunner {
     },
 
     resetSession(fromUserId) {
-      clearUserSession(fromUserId);
+      clearUserSession(fromUserId, "gemini");
       logger.info(`gemini: session cleared for user=${fromUserId.slice(0, 12)}...`);
     },
   };

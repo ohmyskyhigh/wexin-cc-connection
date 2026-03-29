@@ -84,13 +84,14 @@ export function listAccountIds(): string[] {
   }
 }
 
-/** Get the first (default) account, or null if none registered. */
+/** Get the most recently added account, or null if none registered. */
 export function getDefaultAccount(): { accountId: string; data: AccountData } | null {
   const ids = listAccountIds();
   if (ids.length === 0) return null;
-  const data = loadAccount(ids[0]);
+  const lastId = ids[ids.length - 1];
+  const data = loadAccount(lastId);
   if (!data) return null;
-  return { accountId: ids[0], data };
+  return { accountId: lastId, data };
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +136,7 @@ function sessionPath(userId: string): string {
 
 type UserSessionData = {
   sessionId?: string;
+  sessions?: Record<string, string>;
   addDirs?: string[];
   updatedAt?: string;
 };
@@ -153,19 +155,33 @@ function saveSessionData(userId: string, data: UserSessionData): void {
   fs.writeFileSync(sessionPath(userId), JSON.stringify({ ...data, updatedAt: new Date().toISOString() }), "utf-8");
 }
 
-export function loadUserSession(userId: string): string | undefined {
+export function loadUserSession(userId: string, backend?: string): string | undefined {
   const data = loadSessionData(userId);
+  if (backend) {
+    return data.sessions?.[backend];
+  }
   return typeof data.sessionId === "string" ? data.sessionId : undefined;
 }
 
-export function saveUserSession(userId: string, sessionId: string): void {
+export function saveUserSession(userId: string, sessionId: string, backend?: string): void {
   const data = loadSessionData(userId);
-  saveSessionData(userId, { ...data, sessionId });
+  if (backend) {
+    const sessions = data.sessions ?? {};
+    sessions[backend] = sessionId;
+    saveSessionData(userId, { ...data, sessions });
+  } else {
+    saveSessionData(userId, { ...data, sessionId });
+  }
 }
 
-export function clearUserSession(userId: string): void {
+export function clearUserSession(userId: string, backend?: string): void {
   const data = loadSessionData(userId);
-  // Keep addDirs, only clear session
+  if (backend && data.sessions) {
+    delete data.sessions[backend];
+    saveSessionData(userId, data);
+    return;
+  }
+  // Clear all sessions
   if (data.addDirs?.length) {
     saveSessionData(userId, { addDirs: data.addDirs });
   } else {
